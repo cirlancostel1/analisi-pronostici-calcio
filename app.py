@@ -77,12 +77,12 @@ else:
         ]
 
     if campionato_scelto != "Tutti" and partite:
-        id_lega = partite["league"]["id"]
-        stagione = partite["league"]["season"]
+        id_lega = partite[0]["league"]["id"]
+        stagione = partite[0]["league"]["season"]
         if st.checkbox(f"🏆 Mostra Classifica ({campionato_scelto})"):
             dati_classifica = carica_classifica(id_lega, stagione)
             if dati_classifica:
-                gruppi = dati_classifica["league"]["standings"]
+                gruppi = dati_classifica[0]["league"]["standings"]
                 for g in gruppi:
                     righe = []
                     for sq in g:
@@ -146,7 +146,7 @@ else:
             if st.button("Analizza Pronostico", key=f"btn_{id_p}"):
                 dati = carica_pronostico(id_p)
                 if dati:
-                    info = dati
+                    info = dati[0]
                     pred = info["predictions"]
                     teams_stats = info.get("teams", {})
                     comp = info.get("comparison", {})
