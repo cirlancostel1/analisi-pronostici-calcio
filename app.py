@@ -172,7 +172,7 @@ else:
                             if chiave in comp:
                                 val_c = comp[chiave].get("home", "50%")
                                 val_t = comp[chiave].get("away", "50%")
-                                num_c = int(val_c.replace("%", "")) if val_c else 50
+                                num_c = int(float(val_c.replace("%", ""))) if val_c else 50
                                 st.write(f"**{etichetta}**: {casa} `{val_c}` vs `{val_t}` {trasferta}")
                                 st.progress(num_c / 100)
 
