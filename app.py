@@ -29,11 +29,13 @@ if not verifica_password():
     st.stop()
 
 api_key = st.secrets.get("API_FOOTBALL_KEY", os.getenv("API_FOOTBALL_KEY", ""))
+RAPID_HOST = "api-football-v1." + "://rapidapi.com"
+BASE_URL = "https://" + RAPID_HOST + "/v3"
+
 headers = {
     "x-rapidapi-key": api_key.strip(),
-    "x-rapidapi-host": "://rapidapi.com"
+    "x-rapidapi-host": RAPID_HOST
 }
-BASE_URL = "https://" + "://rapidapi.com/v3"
 
 def poisson_prob(lmbda, k):
     return (math.exp(-lmbda) * (lmbda ** k)) / math.factorial(k)
@@ -85,7 +87,7 @@ st.title("⚽ Analisi Partite e Pronostici")
 @st.cache_data(ttl=600)
 def carica_partite(data_str):
     if not api_key:
-        st.error("Chiave API_FOOTBALL_KEY mancante!")
+        st.error("Chiave API_FOOTBALL_KEY mancante nei Secrets!")
         return []
     url = f"{BASE_URL}/fixtures?date={data_str}"
     r = requests.get(url, headers=headers).json()
