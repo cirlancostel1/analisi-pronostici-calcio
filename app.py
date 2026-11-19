@@ -28,8 +28,8 @@ def verifica_password():
 if not verifica_password():
     st.stop()
 
-api_key = st.secrets.get("API_FOOTBALL_KEY", os.getenv("API_FOOTBALL_KEY"))
-headers = {"x-apisports-key": api_key}
+api_key = st.secrets.get("API_FOOTBALL_KEY", os.getenv("API_FOOTBALL_KEY", ""))
+headers = {"x-apisports-key": api_key.strip()}
 
 def poisson_prob(lmbda, k):
     return (math.exp(-lmbda) * (lmbda ** k)) / math.factorial(k)
@@ -55,7 +55,7 @@ def calcola_mercati_statistici(att_casa, att_trasf):
             if tot > 3.5:
                 p_over35 += prob
 
-    risultati.sort(key=lambda x: x[1], reverse=True)
+    risultati.sort(key=lambda x: x, reverse=True)
     return {
         "GG": round(p_gg * 100, 1),
         "NG": round((1 - p_gg) * 100, 1),
@@ -78,10 +78,14 @@ def somma_gol_tempo(minuti_dict, chiavi):
 
 st.title("⚽ Analisi Partite e Pronostici")
 
-@st.cache_data(ttl=600)
 def carica_partite(data_str):
+    if not api_key:
+        st.error("Chiave API_FOOTBALL_KEY mancante nei Secrets di Streamlit Cloud!")
+        return []
     url = "https://" + f"v3.football.api-sports.io/fixtures?date={data_str}"
     r = requests.get(url, headers=headers).json()
+    if r.get("errors"):
+        st.error(f"Risposta API: {r['errors']}")
     return r.get("response", [])
 
 @st.cache_data(ttl=3600)
@@ -123,12 +127,12 @@ else:
         ]
 
     if campionato_scelto != "Tutti" and partite:
-        id_lega = partite[0]["league"]["id"]
-        stagione = partite[0]["league"]["season"]
+        id_lega = partite["league"]["id"]
+        stagione = partite["league"]["season"]
         if st.checkbox(f"🏆 Mostra Classifica ({campionato_scelto})"):
             dati_classifica = carica_classifica(id_lega, stagione)
             if dati_classifica:
-                gruppi = dati_classifica[0]["league"]["standings"]
+                gruppi = dati_classifica["league"]["standings"]
                 for g in gruppi:
                     righe = []
                     for sq in g:
@@ -192,7 +196,7 @@ else:
             if st.button("Analizza Pronostico Completo", key=f"btn_{id_p}"):
                 dati = carica_pronostico(id_p)
                 if dati:
-                    info = dati[0]
+                    info = dati
                     pred = info["predictions"]
                     teams_stats = info.get("teams", {})
                     comp = info.get("comparison", {})
@@ -200,7 +204,6 @@ else:
 
                     st.success(f"Analisi tecnica: {pred.get('advice', 'N/D')}")
 
-                    # 1. Esito Finale 1X2 e Doppia Chance
                     p1 = int(float(pred["percent"]["home"].replace("%", "")))
                     px = int(float(pred["percent"]["draw"].replace("%", "")))
                     p2 = int(float(pred["percent"]["away"].replace("%", "")))
@@ -216,7 +219,6 @@ else:
                     dc2.metric("Doppia Chance X2", f"{px + p2}%")
                     dc3.metric("Doppia Chance 12", f"{p1 + p2}%")
 
-                    # 2. Analisi Gol: GG/NG, Under/Over e Risultati Esatti (Modello Poisson)
                     f_casa = teams_stats.get("home", {}).get("last_5", {})
                     f_trasf = teams_stats.get("away", {}).get("last_5", {})
 
