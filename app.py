@@ -29,7 +29,11 @@ if not verifica_password():
     st.stop()
 
 api_key = st.secrets.get("API_FOOTBALL_KEY", os.getenv("API_FOOTBALL_KEY", ""))
-headers = {"x-apisports-key": api_key.strip()}
+headers = {
+    "x-rapidapi-key": api_key.strip(),
+    "x-rapidapi-host": "://rapidapi.com"
+}
+BASE_URL = "https://" + "://rapidapi.com/v3"
 
 def poisson_prob(lmbda, k):
     return (math.exp(-lmbda) * (lmbda ** k)) / math.factorial(k)
@@ -55,7 +59,7 @@ def calcola_mercati_statistici(att_casa, att_trasf):
             if tot > 3.5:
                 p_over35 += prob
 
-    risultati.sort(key=lambda x: x, reverse=True)
+    risultati.sort(key=lambda x: x[1], reverse=True)
     return {
         "GG": round(p_gg * 100, 1),
         "NG": round((1 - p_gg) * 100, 1),
@@ -78,25 +82,28 @@ def somma_gol_tempo(minuti_dict, chiavi):
 
 st.title("⚽ Analisi Partite e Pronostici")
 
+@st.cache_data(ttl=600)
 def carica_partite(data_str):
     if not api_key:
-        st.error("Chiave API_FOOTBALL_KEY mancante nei Secrets di Streamlit Cloud!")
+        st.error("Chiave API_FOOTBALL_KEY mancante!")
         return []
-    url = "https://" + f"v3.football.api-sports.io/fixtures?date={data_str}"
+    url = f"{BASE_URL}/fixtures?date={data_str}"
     r = requests.get(url, headers=headers).json()
     if r.get("errors"):
         st.error(f"Risposta API: {r['errors']}")
+    if r.get("message"):
+        st.error(f"Messaggio RapidAPI: {r['message']}")
     return r.get("response", [])
 
 @st.cache_data(ttl=3600)
 def carica_pronostico(id_partita):
-    url = "https://" + f"v3.football.api-sports.io/predictions?fixture={id_partita}"
+    url = f"{BASE_URL}/predictions?fixture={id_partita}"
     r = requests.get(url, headers=headers).json()
     return r.get("response", [])
 
 @st.cache_data(ttl=3600)
 def carica_classifica(id_lega, stagione):
-    url = "https://" + f"v3.football.api-sports.io/standings?league={id_lega}&season={stagione}"
+    url = f"{BASE_URL}/standings?league={id_lega}&season={stagione}"
     r = requests.get(url, headers=headers).json()
     return r.get("response", [])
 
@@ -127,12 +134,12 @@ else:
         ]
 
     if campionato_scelto != "Tutti" and partite:
-        id_lega = partite["league"]["id"]
-        stagione = partite["league"]["season"]
+        id_lega = partite[0]["league"]["id"]
+        stagione = partite[0]["league"]["season"]
         if st.checkbox(f"🏆 Mostra Classifica ({campionato_scelto})"):
             dati_classifica = carica_classifica(id_lega, stagione)
             if dati_classifica:
-                gruppi = dati_classifica["league"]["standings"]
+                gruppi = dati_classifica[0]["league"]["standings"]
                 for g in gruppi:
                     righe = []
                     for sq in g:
@@ -196,7 +203,7 @@ else:
             if st.button("Analizza Pronostico Completo", key=f"btn_{id_p}"):
                 dati = carica_pronostico(id_p)
                 if dati:
-                    info = dati
+                    info = dati[0]
                     pred = info["predictions"]
                     teams_stats = info.get("teams", {})
                     comp = info.get("comparison", {})
@@ -241,5 +248,3 @@ else:
                     g3.metric("Over 1.5", f"{mercati['Over 1.5']}%")
                     g4.metric("Under 1.5", f"{mercati['Under 1.5']}%")
 
-                    u1, u2, u3, u4 = st.columns(4)
-                    u1.metric("Over 2.5", f"{mercati['Over 2.5']}%")
