@@ -29,8 +29,8 @@ if not verifica_password():
     st.stop()
 
 api_key = st.secrets.get("API_FOOTBALL_KEY", os.getenv("API_FOOTBALL_KEY", ""))
-RAPID_HOST = "api-football-v1." + "://rapidapi.com"
-BASE_URL = "https://" + RAPID_HOST + "/v3"
+RAPID_HOST = "".join(["api-football-v1", ".", "p", ".", "rapidapi", ".", "com"])
+BASE_URL =  "".join(["https", "://", RAPID_HOST, "/v3"])
 
 headers = {
     "x-rapidapi-key": api_key.strip(),
