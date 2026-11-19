@@ -1,4 +1,5 @@
 import os
+import math
 import requests
 import pandas as pd
 import streamlit as st
@@ -29,6 +30,51 @@ if not verifica_password():
 
 api_key = st.secrets.get("API_FOOTBALL_KEY", os.getenv("API_FOOTBALL_KEY"))
 headers = {"x-apisports-key": api_key}
+
+def poisson_prob(lmbda, k):
+    return (math.exp(-lmbda) * (lmbda ** k)) / math.factorial(k)
+
+def calcola_mercati_statistici(att_casa, att_trasf):
+    p_gg = 0.0
+    p_over15 = 0.0
+    p_over25 = 0.0
+    p_over35 = 0.0
+    risultati = []
+
+    for g_c in range(7):
+        for g_t in range(7):
+            prob = poisson_prob(att_casa, g_c) * poisson_prob(att_trasf, g_t)
+            risultati.append((f"{g_c}-{g_t}", prob * 100))
+            if g_c > 0 and g_t > 0:
+                p_gg += prob
+            tot = g_c + g_t
+            if tot > 1.5:
+                p_over15 += prob
+            if tot > 2.5:
+                p_over25 += prob
+            if tot > 3.5:
+                p_over35 += prob
+
+    risultati.sort(key=lambda x: x[1], reverse=True)
+    return {
+        "GG": round(p_gg * 100, 1),
+        "NG": round((1 - p_gg) * 100, 1),
+        "Over 1.5": round(p_over15 * 100, 1),
+        "Under 1.5": round((1 - p_over15) * 100, 1),
+        "Over 2.5": round(p_over25 * 100, 1),
+        "Under 2.5": round((1 - p_over25) * 100, 1),
+        "Over 3.5": round(p_over35 * 100, 1),
+        "Under 3.5": round((1 - p_over35) * 100, 1),
+        "Top3": risultati[:3]
+    }
+
+def somma_gol_tempo(minuti_dict, chiavi):
+    totale = 0
+    for k in chiavi:
+        val = minuti_dict.get(k, {}).get("total")
+        if isinstance(val, int):
+            totale += val
+    return totale
 
 st.title("⚽ Analisi Partite e Pronostici")
 
@@ -143,7 +189,7 @@ else:
 
             st.divider()
 
-            if st.button("Analizza Pronostico", key=f"btn_{id_p}"):
+            if st.button("Analizza Pronostico Completo", key=f"btn_{id_p}"):
                 dati = carica_pronostico(id_p)
                 if dati:
                     info = dati[0]
@@ -153,58 +199,45 @@ else:
                     h2h = info.get("h2h", [])
 
                     st.success(f"Analisi tecnica: {pred.get('advice', 'N/D')}")
+
+                    # 1. Esito Finale 1X2 e Doppia Chance
+                    p1 = int(float(pred["percent"]["home"].replace("%", "")))
+                    px = int(float(pred["percent"]["draw"].replace("%", "")))
+                    p2 = int(float(pred["percent"]["away"].replace("%", "")))
+
+                    st.markdown("#### 🎯 Esito Finale (1X2) e Doppia Chance")
                     c1, c2, c3 = st.columns(3)
-                    c1.metric("Vittoria Casa (1)", pred["percent"]["home"])
-                    c2.metric("Pareggio (X)", pred["percent"]["draw"])
-                    c3.metric("Vittoria Trasferta (2)", pred["percent"]["away"])
+                    c1.metric("1 (Casa)", f"{p1}%")
+                    c2.metric("X (Pareggio)", f"{px}%")
+                    c3.metric("2 (Trasferta)", f"{p2}%")
 
-                    if comp:
-                        st.markdown("#### ⚖️ Confronto Diretto (%)")
-                        voci = {
-                            "Forma": "form",
-                            "Attacco": "att",
-                            "Difesa": "def",
-                            "Distribuzione Poisson": "poisson_distribution",
-                            "Scontri Diretti": "h2h",
-                            "Totale": "total"
-                        }
-                        for etichetta, chiave in voci.items():
-                            if chiave in comp:
-                                val_c = comp[chiave].get("home", "50%")
-                                val_t = comp[chiave].get("away", "50%")
-                                num_c = int(float(val_c.replace("%", ""))) if val_c else 50
-                                st.write(f"**{etichetta}**: {casa} `{val_c}` vs `{val_t}` {trasferta}")
-                                st.progress(num_c / 100)
+                    dc1, dc2, dc3 = st.columns(3)
+                    dc1.metric("Doppia Chance 1X", f"{p1 + px}%")
+                    dc2.metric("Doppia Chance X2", f"{px + p2}%")
+                    dc3.metric("Doppia Chance 12", f"{p1 + p2}%")
 
-                    st.markdown("#### 📊 Forma Recente e Media Gol")
+                    # 2. Analisi Gol: GG/NG, Under/Over e Risultati Esatti (Modello Poisson)
                     f_casa = teams_stats.get("home", {}).get("last_5", {})
                     f_trasf = teams_stats.get("away", {}).get("last_5", {})
 
-                    col_f1, col_f2 = st.columns(2)
-                    with col_f1:
-                        st.write(f"**{casa}**")
-                        st.write(f"• Forma ultime 5: `{f_casa.get('form', 'N/D')}`")
-                        st.write(f"• Attacco / Difesa: `{f_casa.get('att', 'N/D')}` / `{f_casa.get('def', 'N/D')}`")
-                        gol_f_c = f_casa.get("goals", {}).get("for", {}).get("average", "N/D")
-                        gol_s_c = f_casa.get("goals", {}).get("against", {}).get("average", "N/D")
-                        st.write(f"• Media gol fatti / subiti: `{gol_f_c}` / `{gol_s_c}`")
+                    try:
+                        gf_c = float(f_casa.get("goals", {}).get("for", {}).get("average", 1.2))
+                        gs_c = float(f_casa.get("goals", {}).get("against", {}).get("average", 1.2))
+                        gf_t = float(f_trasf.get("goals", {}).get("for", {}).get("average", 1.1))
+                        gs_t = float(f_trasf.get("goals", {}).get("against", {}).get("average", 1.1))
+                    except (ValueError, TypeError):
+                        gf_c, gs_c, gf_t, gs_t = 1.2, 1.2, 1.1, 1.1
 
-                    with col_f2:
-                        st.write(f"**{trasferta}**")
-                        st.write(f"• Forma ultime 5: `{f_trasf.get('form', 'N/D')}`")
-                        st.write(f"• Attacco / Difesa: `{f_trasf.get('att', 'N/D')}` / `{f_trasf.get('def', 'N/D')}`")
-                        gol_f_t = f_trasf.get("goals", {}).get("for", {}).get("average", "N/D")
-                        gol_s_t = f_trasf.get("goals", {}).get("against", {}).get("average", "N/D")
-                        st.write(f"• Media gol fatti / subiti: `{gol_f_t}` / `{gol_s_t}`")
+                    attesa_casa = max(0.2, (gf_c + gs_t) / 2)
+                    attesa_trasf = max(0.2, (gf_t + gs_c) / 2)
+                    mercati = calcola_mercati_statistici(attesa_casa, attesa_trasf)
 
-                    if h2h:
-                        st.markdown("#### ⚔️ Ultimi Scontri Diretti")
-                        for match in h2h[:5]:
-                            data_m = match["fixture"]["date"][:10]
-                            sq_c = match["teams"]["home"]["name"]
-                            sq_t = match["teams"]["away"]["name"]
-                            g_c = match["goals"]["home"]
-                            g_t = match["goals"]["away"]
-                            st.write(f"• `{data_m}` | {sq_c} **{g_c} - {g_t}** {sq_t}")
-                else:
-                    st.info("Previsione non ancora disponibile per questa partita.")
+                    st.markdown("#### ⚽ Gol/NoGol (GG/NG) e Under/Over")
+                    g1, g2, g3, g4 = st.columns(4)
+                    g1.metric("GG (Entrambe segnano)", f"{mercati['GG']}%")
+                    g2.metric("NG (NoGol)", f"{mercati['NG']}%")
+                    g3.metric("Over 1.5", f"{mercati['Over 1.5']}%")
+                    g4.metric("Under 1.5", f"{mercati['Under 1.5']}%")
+
+                    u1, u2, u3, u4 = st.columns(4)
+                    u1.metric("Over 2.5", f"{mercati['Over 2.5']}%")
